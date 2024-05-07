@@ -21,7 +21,9 @@ export default function Home() {
     const fetchData = async () => {
       if (!input) return setSearchResults(undefined);
 
-      const res = await fetch(`/api/search?q=${input}`);
+      const res = await fetch(
+        `https://fastapi.zakpersonalprojects.workers.dev/api/search?q=${input}`
+      );
 
       const data = (await res.json()) as {
         results: string[];
@@ -52,7 +54,7 @@ export default function Home() {
             />
 
             <CommandList>
-              {searchResults?.results.length === 0 ? (
+              {searchResults?.results?.length === 0 ? (
                 <CommandEmpty>No Results Found.</CommandEmpty>
               ) : null}
 
