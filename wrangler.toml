@@ -1,0 +1,6 @@
+name = "fastapi"
+compatibility_date = "2024-05-07"
+
+[vars]
+UPSTASH_REDIS_REST_URL = https://feasible-panther-51876.upstash.io
+UPSTASH_REDIS_REST_TOKEN = AcqkAAIncDE1ZGIxNjE3NTIzNmY0YWJkOTY4NzM4NmM1ZjNiNGI3MHAxNTE4NzY
