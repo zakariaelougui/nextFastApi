@@ -1,36 +1,69 @@
-This is a [Next.js](https://nextjs.org/) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
+# Speed Search
 
-## Getting Started
+A personal experiment to test the speed of a prefix-based search algorithm using Redis sorted sets as the backing store.
 
-First, run the development server:
+The core idea: instead of a traditional full-text search or LIKE query, country names are pre-indexed as all their possible prefixes in an Upstash Redis sorted set. At query time, a single `ZRANK` + `ZRANGE` call retrieves matching completions — demonstrating sub-millisecond read latency even at the edge.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+## How the algorithm works
+
+During seeding (`src/lib/seed.ts`), each country name is uppercased and broken into every prefix:
+
+```
+"FRANCE" → ["F", "FR", "FRA", "FRAN", "FRANC", "FRANCE*"]
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+All prefixes are stored as members of a Redis sorted set (`terms`) with score `0`. The trailing `*` marks a complete word. Because members in a sorted set are ordered lexicographically when scores are equal, all prefixes of a term cluster together.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+At search time (`/api/search?q=`):
 
-This project uses [`next/font`](https://nextjs.org/docs/basic-features/font-optimization) to automatically optimize and load Inter, a custom Google Font.
+1. `ZRANK` finds the position of the query string in the sorted set.
+2. `ZRANGE` fetches the next 50 members from that position.
+3. Members are collected while they still start with the query; the loop stops at the first non-matching entry.
+4. Only members ending with `*` (complete words) are returned, with the `*` stripped.
 
-## Learn More
+The response includes both the matched country names and the time taken in milliseconds.
 
-To learn more about Next.js, take a look at the following resources:
+## Stack
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+| Layer | Technology |
+|---|---|
+| Frontend | Next.js 14, Tailwind CSS, shadcn/ui (`cmdk`) |
+| API | Hono on Cloudflare Workers (edge runtime) |
+| Database | Upstash Redis (serverless Redis over HTTP) |
+| Deployment | Wrangler (Cloudflare Workers) |
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js/) - your feedback and contributions are welcome!
+## Project structure
 
-## Deploy on Vercel
+```
+src/
+  app/
+    api/[[...route]]/route.ts   # Hono search endpoint
+    page.tsx                    # Search UI
+  lib/
+    seed.ts                     # One-time Redis population script
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Running locally
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/deployment) for more details.
+```bash
+pnpm install
+pnpm dev
+```
+
+## Seeding the database
+
+Run once to populate Upstash Redis with the country prefix index:
+
+```bash
+npx tsx src/lib/seed.ts
+```
+
+## Deploying the API
+
+The API is deployed separately to Cloudflare Workers via Wrangler:
+
+```bash
+pnpm deploy
+```
+
+Set `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` in `wrangler.toml` (or as Cloudflare Worker secrets for production).
